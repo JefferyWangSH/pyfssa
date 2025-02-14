@@ -10,8 +10,29 @@ from __future__ import absolute_import, division, print_function
 
 import numpy
 from numpy import asfarray
-from scipy.optimize.optimize import (OptimizeResult,
-                                     _status_message, wrap_function)
+from scipy.optimize import OptimizeResult
+
+_status_message = {'success': 'Optimization terminated successfully.',
+                   'maxfev': 'Maximum number of function evaluations has '
+                              'been exceeded.',
+                   'maxiter': 'Maximum number of iterations has been '
+                              'exceeded.',
+                   'pr_loss': 'Desired error not necessarily achieved due '
+                              'to precision loss.',
+                   'nan': 'NaN result encountered.',
+                   'out_of_bounds': 'The result is outside of the provided '
+                                    'bounds.'}
+
+def _wrap_function(function, args):
+    ncalls = [0]
+    if function is None:
+        return ncalls, None
+
+    def function_wrapper(*wrapper_args):
+        ncalls[0] += 1
+        return function(*(wrapper_args + args))
+
+    return ncalls, function_wrapper
 
 
 def _minimize_neldermead(func, x0, args=(), callback=None,
@@ -40,7 +61,7 @@ def _minimize_neldermead(func, x0, args=(), callback=None,
     maxfun = maxfev
     retall = return_all
 
-    fcalls, func = wrap_function(func, args)
+    fcalls, func = _wrap_function(func, args)
     x0 = asfarray(x0).flatten()
     N = len(x0)
     if maxiter is None:

@@ -238,7 +238,7 @@ def _wls_linearfit_predict(x, w, wx, wy, wxx, wxy, select):
 
 
 def _jprimes(x, i, x_bounds=None):
-    """
+    r"""
     Helper function to return the j' indices for the master curve fit
 
     This function is a helper function for :py:func:`quality`. It is not
@@ -316,7 +316,7 @@ def _select_mask(j, j_primes):
     ret = np.zeros_like(j_primes, dtype=bool)
     my_iprimes = np.invert(np.isnan(j_primes[:, j])).nonzero()[0]
     my_jprimes = j_primes[my_iprimes, j]
-    my_jprimes = my_jprimes.astype(np.int)
+    my_jprimes = my_jprimes.astype(np.int64)
     ret[my_iprimes, my_jprimes] = True
     ret[my_iprimes, my_jprimes + 1] = True
 
@@ -505,7 +505,8 @@ def _neldermead_errors(sim, fsim, fun):
     return np.sqrt(np.diag(varco)), varco
 
 
-def autoscale(l, rho, a, da, rho_c0, nu0, zeta0, x_bounds=None, **kwargs):
+def autoscale(l, rho, a, da, rho_c0, nu0, zeta0, x_bounds=None, 
+              fix_rho_c=False, fix_nu=False, fix_zeta=False, **kwargs):
     """
     Automatically scale finite-size data and fit critical point and exponents
 
@@ -519,6 +520,9 @@ def autoscale(l, rho, a, da, rho_c0, nu0, zeta0, x_bounds=None, **kwargs):
 
     x_bounds : tuple of floats, optional
         lower and upper bound for scaled data `x` to consider
+    
+    fix_rho_c, fix_nu, fix_zeta : bool, optional
+        whether to fix the critical point or exponents to their initial guessed values
 
     Returns
     -------
@@ -600,9 +604,27 @@ def autoscale(l, rho, a, da, rho_c0, nu0, zeta0, x_bounds=None, **kwargs):
     >>> res = fssa.autoscale(l=l, rho=rho, a=a, da=da, rho_c0=0.9, nu0=2.0, zeta0=0.0)
     """
 
+    if fix_rho_c and fix_nu and fix_zeta:
+        raise ValueError("cannot fix all exponents, at least one of them must be free")
+
+    initial_guesses = []
+    if not fix_rho_c:
+        initial_guesses.append(rho_c0)
+    if not fix_nu:
+        initial_guesses.append(nu0) 
+    if not fix_zeta:
+        initial_guesses.append(zeta0)
+
+    idx_rho_c = 0
+    idx_nu = 1 - int(fix_rho_c)
+    idx_zeta = 2 - int(fix_rho_c) - int(fix_nu)
+
     def goal_function(x):
         my_x, my_y, my_dy = scaledata(
-            rho=rho, l=l, a=a, da=da, nu=x[1], zeta=x[2], rho_c=x[0],
+            rho=rho, l=l, a=a, da=da,
+            nu=x[idx_nu] if not fix_nu else nu0,
+            zeta=x[idx_zeta] if not fix_zeta else zeta0,
+            rho_c=x[idx_rho_c] if not fix_rho_c else rho_c0,
         )
         return quality(
             my_x, my_y, my_dy, x_bounds=x_bounds,
@@ -610,7 +632,7 @@ def autoscale(l, rho, a, da, rho_c0, nu0, zeta0, x_bounds=None, **kwargs):
 
     ret = scipy.optimize.minimize(
         goal_function,
-        [rho_c0, nu0, zeta0],
+        initial_guesses,
         method=_minimize_neldermead,
         options={
             'xtol': 1e-2,
@@ -626,7 +648,13 @@ def autoscale(l, rho, a, da, rho_c0, nu0, zeta0, x_bounds=None, **kwargs):
 
     ret['varco'] = varco
     ret['errors'] = errors
-    ret['rho'], ret['nu'], ret['zeta'] = ret['x']
-    ret['drho'], ret['dnu'], ret['dzeta'] = ret['errors']
+
+    ret['rho'] = ret['x'][idx_rho_c] if not fix_rho_c else rho_c0
+    ret['nu'] = ret['x'][idx_nu] if not fix_nu else nu0
+    ret['zeta'] = ret['x'][idx_zeta] if not fix_zeta else zeta0
+
+    ret['drho'] = ret['errors'][idx_rho_c] if not fix_rho_c else 0
+    ret['dnu'] = ret['errors'][idx_nu] if not fix_nu else 0
+    ret['dzeta'] = ret['errors'][idx_zeta] if not fix_zeta else 0
 
     return ret

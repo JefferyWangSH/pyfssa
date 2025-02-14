@@ -136,10 +136,9 @@ def prepare_data_files(dct):
 
 
 def read_setup_cfg():
-    config = configparser.SafeConfigParser(allow_no_value=True)
+    config = configparser.ConfigParser(allow_no_value=True)
     config_file = os.path.join(__location__, 'setup.cfg')
-    with open(config_file, 'r') as f:
-        config.readfp(f)
+    config.read(config_file)
     metadata = dict(config.items('metadata'))
     classifiers = metadata.get('classifiers', '')
     metadata['classifiers'] = [item.strip() for item in classifiers.split(',')]
